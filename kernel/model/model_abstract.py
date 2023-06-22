@@ -19,7 +19,7 @@ class ModelAbstract(ABC):
 
     @abstractmethod
     def get_features(self, dto_in: DataInfo):
-        ...
+        return self.model.feature_names_
 
     def get_prediction(self, dto_in: DataInfo):
         x = self.get_features(dto_in)

@@ -1,80 +1,72 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, abort
 import numpy as np
 import pandas as pd
 import pickle
-from db_api import DbApi
+from db_api import DbApi, DBOrm
 from kernel.model_runner import ModelRunner
 from kernel.data_info import DataInfo
+from constant.model_categories import PREFIX_INFO
 
 def create_app():
     app = Flask(__name__)
     db_api = DbApi()
+    app.db_orm = DBOrm()
     app.model_runner = ModelRunner(db_api)
 
     @app.route('/')
     def hello_world():  # put application's code here
         return render_template("index.html")
 
-    @app.route('/model', methods=['POST'])
-    def upload_model():
-        """
-        Загрузить предиктивную модель для факультета
-        """
+    @app.errorhandler(403)
+    def internal_server_error(e):
+        return 'prefix не из списка валидных, для получение валидных префиксов вызовите ручку get_prefix', 403
 
-        faculty = request.args.get('faculty')
-        if faculty is None:
-            faculty = 'cs_b'
-        model_pkl = request.files.get('model_miem_mag.cbm').read()
-        # print(model_pkl)
-
-        db_api.save_model(faculty, model_pkl)
-
-        return render_template("index.html")
-
-    @app.route('/data', methods=['POST'])
-    def upload_data():
-        """
-        Загрузить csv-таблицу
-        """
-
-        faculty = request.args.get('faculty')
+    @app.route('/date_subject', methods=['POST'])
+    def upload_subject_data():
+        prefix = request.args.get('prefix')
+        if prefix not in PREFIX_INFO:
+            abort(403)
         data_csv = request.files.get('data')
         df = pd.read_csv(data_csv)
+        subject_count, exist_subject = app.db_orm.add_subjects(prefix, df)
+        return {
+            'success': True,
+            'subject_count_insert': subject_count,
+            'subject_count_not_insert': len(exist_subject),
+            'exist_subjects': exist_subject
+        }
 
-        courses_names = df.columns.values[2:]
-        names_2_ids = db_api.get_courses_ids_by_names(tuple(courses_names))
-
-        for i, row in df.iterrows():
-            student_id = int(row.get('id'))
-            module = int(row.get('module'))
-            for j in range(len(courses_names)):
-                course_name = courses_names[j]
-                value = row.get(course_name)
-                if not np.isnan(value):
-
-                    db_api.save_mark(student_id, names_2_ids[course_name], module, value)
-
-        model_pkl = db_api.get_model(faculty)
-        model = pickle.loads(model_pkl)
-
-
-        model_pkl = pickle.dumps(model, protocol=pickle.HIGHEST_PROTOCOL)
-        db_api.save_model(faculty, model_pkl)
-
-        return render_template("index.html")
+    @app.route('/get_prefix', methods=['GET'])
+    def get_prefix_info():
+        return PREFIX_INFO
 
     @app.route('/prediction', methods=['GET'])
     def get_prediction():
         """
         Получить предсказание по студенту
         """
+        request_data = request.get_json()
+        #
+        student_id = request_data['student_id']
+        model_type = app.db_orm.get_model_prefix_for_stident_id(student_id)
+        if not model_type:
+            return {
+                'success': False,
+                'error': 'Такого пользователся не существует'
+            }
+
         dto_in = DataInfo(
-            model_category='miem_mag'
+            model_category=model_type
         )
-        # student_id = request.args.get('st_type')
 
         result = app.model_runner.get_prediction(dto_in)
 
-        return result
+        return {
+            'success': True
+        }
+
+    @app.route('/help', methods=['GET'])
+    def help_method():
+        return [app.db_orm.degrees_info, app.db_orm.faculcy_info]
 
     return app

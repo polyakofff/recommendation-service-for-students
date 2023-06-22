@@ -1,13 +1,84 @@
 import psycopg2
+from sqlalchemy import create_engine, MetaData, Table, Integer, String, \
+    Column, DateTime, ForeignKey, Numeric, SmallInteger
+
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+from sqlalchemy.orm import sessionmaker
+import pandas as pd
+from constant.model_categories import prefix_creator
+
+Base = declarative_base()
+
+class Subject(Base):
+    __tablename__ = 'subject'
+    subject_id = Column(String(100), primary_key=True)
+    subject_name = Column(String(100), nullable=False)
+
+class Degree(Base):
+    __tablename__ = 'degree'
+    degree_id = Column(Integer(), primary_key=True)
+    degree_name = Column(String(100), nullable=False)
+    degree_tag = Column(String(100), nullable=False)
+
+class Faculty(Base):
+    __tablename__ = 'faculty'
+    faculty_id = Column(Integer(), primary_key=True)
+    faculty_name = Column(String(100), nullable=False)
+    faculty_tag = Column(String(100), nullable=False)
+
+class Program(Base):
+    __tablename__ = 'program'
+    program_id = Column(Integer(), primary_key=True)
+    program_name = Column(String(100), nullable=False)
+
+class Student(Base):
+    __tablename__ = 'student'
+    student_id = Column(Integer(), primary_key=True)
+    faculty_id = Column(Integer, ForeignKey('faculty.faculty_id'))
+    degree_id = Column(Integer, ForeignKey('degree.degree_id'))
+    program_id = Column(Integer, ForeignKey('program.program_id'), nullable=True)
+
+class DBOrm:
+    def __init__(self):
+        self.engine = create_engine("postgresql+psycopg2://postgres:postgres@localhost/postgres")
+        self.Session = sessionmaker(self.engine)
+        self.upload_general_data()
+
+    def upload_general_data(self):
+        with self.Session() as session:
+            self.degrees_info = {degree.degree_id: degree.degree_tag for degree in session.query(Degree).all()}
+            self.faculcy_info = {faculcy.faculty_id: faculcy.faculty_tag for faculcy in session.query(Faculty).all()}
+
+    def add_subjects(self, prefix: str, subjects):
+        with self.Session() as session:
+            existed_subject_key = {subject.subject_id for subject in session.query(Subject).all()}
+
+        subjects_for_insert = [Subject(
+            subject_id=f'{prefix}_{row["ID"]}',
+            subject_name=row['Subject']
+        ) for i, row in subjects.iterrows() if f'{prefix}_{row["ID"]}' not in existed_subject_key]
+
+        existed_subject = [
+            row['ID']
+            for i, row in subjects.iterrows() if f'{prefix}_{row["ID"]}' in existed_subject_key
+        ]
+
+        with self.Session() as session:
+            session.add_all(subjects_for_insert)
+            session.commit()
+
+        return (len(subjects_for_insert), list(existed_subject))
+
+    def get_model_prefix_for_stident_id(self, student_id):
+        with self.Session() as session:
+            student = session.query(Student).get(student_id)
+            if not student:
+                return None
+            return prefix_creator(self.degrees_info.get(student.degree_id), self.faculcy_info.get(student.faculty_id))
 
 
 class DbApi:
-
-    def get_cource(self):
-        with self.connection.cursor() as cursor:
-           res =  cursor.execute('SELECT * FROM ')
-        return res
-
     def __init__(self):
         host = 'localhost'
         try:
@@ -21,27 +92,6 @@ class DbApi:
             print(f'Connection to db ({host}) is successful')
         except:
             print(f'Connection to db ({host}) failed')
-
-    def save_model(self, faculty, model):
-        with self.connection.cursor() as cursor:
-            cursor.execute('''
-            insert into faculty_model(faculty, model_miem_mag.cbm) 
-            values (%s, %s)
-            ''', (faculty, model))
-
-    def get_model(self, faculty):
-        with self.connection.cursor() as cursor:
-            cursor.execute('''
-            select model_miem_mag.cbm
-            from faculty_model
-            where faculty = %s
-            ''', (faculty,))
-
-            r = cursor.fetchone()
-            if r is None:
-                raise Exception(f'Не найдено записей в бд (pk={faculty})')
-            return r[0]
-
 
     def get_student(self, student_id):
         with self.connection.cursor() as cursor:
@@ -102,4 +152,6 @@ class DbApi:
             rs = cursor.fetchall()
             print(type(rs))
             print(rs)
+
+
 

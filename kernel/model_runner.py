@@ -8,6 +8,7 @@ class ModelRunner:
         ]
 
     def get_prediction(self, dto_in: DataInfo):
+        return {}
         models_for_run = [model for model in self.model_register if model.need_prediction(dto_in)]
 
         return [model.get_prediction(dto_in) for model in models_for_run]
