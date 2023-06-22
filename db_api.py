@@ -3,6 +3,11 @@ import psycopg2
 
 class DbApi:
 
+    def get_cource(self):
+        with self.connection.cursor() as cursor:
+           res =  cursor.execute('SELECT * FROM ')
+        return res
+
     def __init__(self):
         host = 'localhost'
         try:
@@ -20,14 +25,14 @@ class DbApi:
     def save_model(self, faculty, model):
         with self.connection.cursor() as cursor:
             cursor.execute('''
-            insert into faculty_model(faculty, model) 
+            insert into faculty_model(faculty, model_miem_mag.cbm) 
             values (%s, %s)
             ''', (faculty, model))
 
     def get_model(self, faculty):
         with self.connection.cursor() as cursor:
             cursor.execute('''
-            select model
+            select model_miem_mag.cbm
             from faculty_model
             where faculty = %s
             ''', (faculty,))
