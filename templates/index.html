@@ -5,9 +5,17 @@
     <title>Title</title>
 </head>
 <body>
+    <form method="POST" enctype="multipart/form-data" action="/model">
+        <input type="file" name="model" accept=".pkl">
+        <input type="submit" value="Загрузить модель">
+    </form>
     <form method="POST" enctype="multipart/form-data" action="/data">
-        <input type="file" name="file" accept=".csv">
-        <input type="submit" value="Загрузить таблицу">
+        <input type="file" name="data" accept=".csv">
+        <input type="submit" value="Загрузить данные">
+    </form>
+    <form method="GET" enctype="text/plain" action="/prediction">
+        <input type="number" name="student_id">
+        <input type="submit" value="Получить вероятность">
     </form>
 </body>
 </html>
