@@ -36,6 +36,20 @@ def create_app():
             'exist_subjects': exist_subject
         }
 
+    @app.route('/data_student', methods=['POST'])
+    def upload_student_data():
+        data_csv = request.files.get('data')
+        df = pd.read_csv(data_csv)
+        count_added_student, all_st, prefix, mark_for_insert, count_col_with_error = app.db_orm.add_student_info(df)
+        return {
+            'success': True,
+            'count_added_student': count_added_student,
+            'all_identify_st': all_st,
+            'type': prefix,
+            'mark_for_insert_count': mark_for_insert,
+            'count_col_with_error': count_col_with_error
+        }
+
     @app.route('/get_prefix', methods=['GET'])
     def get_prefix_info():
         return PREFIX_INFO

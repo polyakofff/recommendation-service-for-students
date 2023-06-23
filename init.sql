@@ -15,11 +15,6 @@ CREATE TABLE public.faculty (
 );
 
 
--- public."program" definition
-
--- Drop table
-
--- DROP TABLE public."program";
 
 CREATE TABLE public."program" (
 	program_id int4 NOT NULL,
