@@ -21,10 +21,11 @@ def create_app():
     @app.route('/date_subject', methods=['POST'])
     def upload_subject_data():
         prefix = request.args.get('prefix')
+        sep = request.args.get('sep')
         if prefix not in PREFIX_INFO:
             abort(403)
         data_csv = request.files.get('data')
-        df = pd.read_csv(data_csv)
+        df = pd.read_csv(data_csv, sep=sep)
         subject_count, exist_subject = app.db_orm.add_subjects(prefix, df)
         return {
             'success': True,
@@ -36,7 +37,8 @@ def create_app():
     @app.route('/data_student', methods=['POST'])
     def upload_student_data():
         data_csv = request.files.get('data')
-        df = pd.read_csv(data_csv)
+        sep = request.args.get('sep')
+        df = pd.read_csv(data_csv, sep=sep)
         count_added_student, all_st, prefix, mark_for_insert, col_with_error = app.db_orm.add_student_info(df)
         return {
             'success': True,
