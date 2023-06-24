@@ -1,29 +1,25 @@
 from abc import ABC, abstractmethod
-from kernel.data_info import DataInfo
 
 class ModelAbstract(ABC):
-    def __init__(self, db_api, model_path):
-        self.db_api = db_api
+    def __init__(self, model_path, model_category):
         self.model_path = model_path
+        self.model_category = model_category
         self.model = self.upload_model()
-
-
-    @property
-    @abstractmethod
-    def model_category(self):
-        ...
 
     @abstractmethod
     def upload_model(self):
         ...
 
-    @abstractmethod
-    def get_features(self, dto_in: DataInfo):
+    def get_features(self, df_features):
+        module = df_features['Module']
+        df_help = df_features.drop(['Module'], axis=1)
+        df_help = df_help.cumsum()
+        df_help['Module'] = module
+        return df_help.tail(1)
+
+    def get_prediction(self, df_features):
+        x = self.get_features(df_features)
         return self.model.feature_names_
 
-    def get_prediction(self, dto_in: DataInfo):
-        x = self.get_features(dto_in)
-        return self.model.feature_names_
-
-    def need_prediction(self, dto_in: DataInfo) -> bool:
-        return dto_in.model_category == self.model_category
+    def need_prediction(self, prefix) -> bool:
+        return prefix == self.model_category

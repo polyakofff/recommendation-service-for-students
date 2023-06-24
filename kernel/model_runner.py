@@ -1,15 +1,14 @@
-from kernel.model.miem_mag_model import MIEMMagModel
-from kernel.data_info import DataInfo
+from kernel.model.catboost_model import CatboostModel
+from constant.model_categories import MIEM_MAG
+
 class ModelRunner:
 
-    def __init__(self, db_api):
+    def __init__(self):
         self.model_register = [
-            MIEMMagModel(db_api, './models/model_miem_mag.cbm')
+            CatboostModel('./models/model_miem_mag.cbm', MIEM_MAG)
         ]
 
-    def get_prediction(self, dto_in: DataInfo):
-        return {}
-        models_for_run = [model for model in self.model_register if model.need_prediction(dto_in)]
+    def get_prediction(self, df_features, prefix):
+        models_for_run = [model for model in self.model_register if model.need_prediction(prefix)]
 
-        return [model.get_prediction(dto_in) for model in models_for_run]
-
+        return [model.get_prediction(df_features) for model in models_for_run]

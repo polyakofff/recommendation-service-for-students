@@ -1,17 +1,14 @@
 from flask import Flask, render_template, request, abort
-import numpy as np
 import pandas as pd
-import pickle
-from db_api import DbApi, DBOrm
+from db_api import DBOrm
 from kernel.model_runner import ModelRunner
-from kernel.data_info import DataInfo
 from constant.model_categories import PREFIX_INFO
+
 
 def create_app():
     app = Flask(__name__)
-    db_api = DbApi()
     app.db_orm = DBOrm()
-    app.model_runner = ModelRunner(db_api)
+    app.model_runner = ModelRunner()
 
     @app.route('/')
     def hello_world():  # put application's code here
@@ -40,14 +37,15 @@ def create_app():
     def upload_student_data():
         data_csv = request.files.get('data')
         df = pd.read_csv(data_csv)
-        count_added_student, all_st, prefix, mark_for_insert, count_col_with_error = app.db_orm.add_student_info(df)
+        count_added_student, all_st, prefix, mark_for_insert, col_with_error = app.db_orm.add_student_info(df)
         return {
             'success': True,
             'count_added_student': count_added_student,
             'all_identify_st': all_st,
             'type': prefix,
             'mark_for_insert_count': mark_for_insert,
-            'count_col_with_error': count_col_with_error
+            'count_col_with_error': len(list(col_with_error)),
+            'col_lis': list(col_with_error)
         }
 
     @app.route('/get_prefix', methods=['GET'])
@@ -62,21 +60,14 @@ def create_app():
         request_data = request.get_json()
         #
         student_id = request_data['student_id']
-        model_type = app.db_orm.get_model_prefix_for_stident_id(student_id)
-        if not model_type:
-            return {
-                'success': False,
-                'error': 'Такого пользователся не существует'
-            }
+        df_features, prefix = app.db_orm.get_features_for_student(student_id)
 
-        dto_in = DataInfo(
-            model_category=model_type
-        )
-
-        result = app.model_runner.get_prediction(dto_in)
+        predict = app.model_runner.get_prediction(df_features, prefix)
 
         return {
-            'success': True
+            'success': True,
+            'module_type': prefix,
+            'predict': predict
         }
 
     @app.route('/help', methods=['GET'])
