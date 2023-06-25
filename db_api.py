@@ -1,100 +1,203 @@
-import psycopg2
+import copy
+from sqlalchemy import create_engine, Integer, String, \
+    Column, ForeignKey
+
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+import pandas as pd
+from constant.model_categories import prefix_creator
+
+Base = declarative_base()
 
 
-class DbApi:
+class Subject(Base):
+    __tablename__ = 'subject'
+    subject_id = Column(String(100), primary_key=True)
+    subject_name = Column(String(100), nullable=False)
 
+
+class Degree(Base):
+    __tablename__ = 'degree'
+    degree_id = Column(Integer(), primary_key=True)
+    degree_name = Column(String(100), nullable=False)
+    degree_tag = Column(String(100), nullable=False)
+
+
+class Faculty(Base):
+    __tablename__ = 'faculty'
+    faculty_id = Column(Integer(), primary_key=True)
+    faculty_name = Column(String(100), nullable=False)
+    faculty_tag = Column(String(100), nullable=False)
+
+
+class Program(Base):
+    __tablename__ = 'program'
+    program_id = Column(Integer(), primary_key=True)
+    program_name = Column(String(100), nullable=False)
+
+
+class Student(Base):
+    __tablename__ = 'student'
+    student_id = Column(Integer(), primary_key=True)
+    faculty_id = Column(Integer, ForeignKey('faculty.faculty_id'))
+    degree_id = Column(Integer, ForeignKey('degree.degree_id'))
+    program_id = Column(Integer, ForeignKey('program.program_id'))
+
+
+class Mark(Base):
+    __tablename__ = 'mark'
+    mark_id = Column(Integer(), primary_key=True, autoincrement=True)
+    module = Column(Integer(), nullable=False)
+    estimation = Column(Integer(), nullable=False)
+    subject_id = Column(String(100), ForeignKey('subject.subject_id'), nullable=False)
+    student_id = Column(Integer(), ForeignKey('student.student_id'), nullable=False)
+
+
+class DBOrm:
     def __init__(self):
-        host = 'localhost'
-        try:
-            self.connection = psycopg2.connect(
-                host=host,
-                dbname='postgres',
-                user='postgres',
-                password='postgres',
-            )
-            self.connection.autocommit = True
-            print(f'Connection to db ({host}) is successful')
-        except:
-            print(f'Connection to db ({host}) failed')
+        self.engine = create_engine("postgresql+psycopg2://postgres:postgres@localhost/postgres")
+        self.Session = sessionmaker(self.engine)
+        self.upload_general_data()
 
-    def save_model(self, faculty, model):
-        with self.connection.cursor() as cursor:
-            cursor.execute('''
-            insert into faculty_model(faculty, model) 
-            values (%s, %s)
-            ''', (faculty, model))
+    def upload_general_data(self):
+        with self.Session() as session:
+            self.degrees_info = {degree.degree_id: degree.degree_tag for degree in session.query(Degree).all()}
+            self.faculcy_info = {faculcy.faculty_id: faculcy.faculty_tag for faculcy in session.query(Faculty).all()}
 
-    def get_model(self, faculty):
-        with self.connection.cursor() as cursor:
-            cursor.execute('''
-            select model
-            from faculty_model
-            where faculty = %s
-            ''', (faculty,))
+    def get_all_exist_subject(self):
+        with self.Session() as session:
+            return {subject.subject_id for subject in session.query(Subject).all()}
 
-            r = cursor.fetchone()
-            if r is None:
-                raise Exception(f'Не найдено записей в бд (pk={faculty})')
-            return r[0]
+    def add_subjects(self, subjects):
+        with self.Session() as session:
+            session.add_all(subjects)
+            session.commit()
 
+    def get_model_prefix_for_stident_id(self, student_id):
+        with self.Session() as session:
+            student = session.query(Student).get(student_id)
+            if not student:
+                return None
+            prefix = prefix_creator(self.degrees_info.get(student.degree_id), self.faculcy_info.get(student.faculty_id))
+        return prefix
 
-    def get_student(self, student_id):
-        with self.connection.cursor() as cursor:
-            cursor.execute('''
-            select *
-            from student
-            where id = %s
-            ''', student_id)
+    def get_features_for_student(self, student_id):
+        prefix = self.get_model_prefix_for_stident_id(student_id)
 
-            r = cursor.fetchone()
-            if r is None:
-                raise Exception(f'Не найдено записей в бд (pk={student_id})')
-            return {'id': r[0], 'name': r[1], 'faculty': r[2]}
+        with self.Session() as session:
+            features_column = [subject.subject_id for subject in
+                               session.query(Subject).filter(Subject.subject_id.like(f"{prefix}%")).all()]
+        dict_of_key = {col.split('_')[-1]: None for col in features_column}
 
-    def get_courses_ids_by_names(self, names):
-        if len(names) == 0:
-            return {}
-        res = {}
-        with self.connection.cursor() as cursor:
-            cursor.execute('''
-            select * 
-            from course 
-            where name in %s
-            ''', (names,))
+        with self.Session() as session:
+            marks_for_student = session.query(Mark).filter(Mark.student_id == student_id).all()
 
-            rs = cursor.fetchall()
-            for r in rs:
-                res[r[1]] = r[0]
+        modules = sorted(list(set([mark.module for mark in marks_for_student])))
 
-        return res
+        dict_for_data = {}
 
-    def save_mark(self, student_id, course_id, module, value):
-        with self.connection.cursor() as cursor:
-            cursor.execute('''
-            insert into mark(student_id, course_id, module, value) 
-            values (%s, %s, %s, %s)
-            ''', (student_id, course_id, module, value))
+        for module in modules:
+            value_dict = copy.deepcopy(dict_of_key)
+            value_dict['Module'] = module
+            dict_for_data[module] = value_dict
 
-        return 1
+        for mark in marks_for_student:
+            mark_key = mark.subject_id.split('_')[-1]
+            dict_for_data[mark.module][mark_key] = mark.estimation
 
-    def get_student_marks(self, student_id):
-        with self.connection.cursor() as cursor:
-            cursor.execute('''
-            select m.value
-            from course c
-                left join (
-                    select m.*
-                    from mark m
-                        left join mark m2 on m.student_id = m2.student_id
-                                         and m.course_id = m2.course_id
-                                         and m.module < m2.module
-                    where m2 is null
-                ) m on c.id = m.course_id
-            where m is null or m.student_id = %s
-            order by c.id
-            ''', (student_id,))
+        if not dict_for_data:
+            return None
+        df_col = list(dict_of_key.keys()) + ['Module']
 
-            rs = cursor.fetchall()
-            print(type(rs))
-            print(rs)
+        dict_for_pf = {col: [] for col in df_col}
 
+        for module, module_val in dict_for_data.items():
+            for col, value in module_val.items():
+                dict_for_pf[col].append(value)
+
+        return pd.DataFrame(dict_for_pf), prefix
+
+    def add_student_info(self, data):
+        columns_withount_estimate = ['Курс', 'Уровень обучения', 'Образовательная программа', 'Факультет', 'ID',
+                                     'Модуль']
+
+        with self.Session() as session:
+            degrees_id_by_name = {degree.degree_name: degree.degree_id for degree in session.query(Degree).all()}
+            faculcy_id_by_name = {faculcy.faculty_name: faculcy.faculty_id for faculcy in session.query(Faculty).all()}
+
+        count_added_student, all_st, prefix = self.add_students(data, degrees_id_by_name, faculcy_id_by_name)
+
+        with self.Session() as session:
+            subject_id_by_name = {
+                subject.subject_name: subject.subject_id
+                for subject in session.query(Subject).filter(Subject.subject_id.like(f"{prefix}%")).all()}
+
+        mark_for_insert = []
+        col_with_error = set()
+        for i, row in data.iterrows():
+            for col in data.columns:
+                if col in columns_withount_estimate:
+                    continue
+
+                if pd.isna(row[col]):
+                    continue
+
+                if col not in subject_id_by_name:
+                    normal_col_name = col[:-2]
+                    if normal_col_name not in subject_id_by_name:
+                        col_with_error.add(col)
+                        continue
+                else:
+                    normal_col_name = col
+
+                subject_id = subject_id_by_name[normal_col_name]
+                estimate = row[col]
+                module = row['Модуль'] + 4 * (row['Курс'] - 1)
+                student_id = row['ID']
+
+                mark_for_insert.append(Mark(
+                    subject_id=subject_id,
+                    estimation=estimate,
+                    module=module,
+                    student_id=student_id
+                )
+                )
+
+        with self.Session() as session:
+            session.add_all(mark_for_insert)
+            session.commit()
+
+        return count_added_student, all_st, prefix, len(mark_for_insert), col_with_error
+
+    def add_students(self, data, degrees_id_by_name, faculcy_id_by_name):
+        with self.Session() as session:
+            process_st = set()
+            students = []
+            prefix = ''
+
+            for i, row in data.iterrows():
+                st = Student(
+                    student_id=row['ID'],
+                    faculty_id=faculcy_id_by_name[row['Факультет']],
+                    degree_id=degrees_id_by_name[row['Уровень обучения']],
+                )
+                prefix = prefix_creator(self.degrees_info[st.degree_id], self.faculcy_info[st.faculty_id])
+                if st.student_id in process_st:
+                    continue
+
+                process_st.add(st.student_id)
+                students.append(st)
+
+            student_ids = [student.student_id for student in students]
+            existed_st = set()
+
+            for id in student_ids:
+                res = session.query(Student).get(id)
+                if not res:
+                    continue
+                existed_st.add(res.student_id)
+
+            st_for_add = [student for student in students if student.student_id not in existed_st]
+            session.add_all(st_for_add)
+            session.commit()
+            return len(st_for_add), len(list(students)), prefix
