@@ -64,6 +64,7 @@ def create_app():
         student_id = request_data['student_id']
         predict, prefix = app.model_runner.get_prediction(student_id)
         return {
+            'student_id': student_id,
             'type': prefix,
             'predict': predict
         }

@@ -7,3 +7,8 @@ class CatboostModel(ModelAbstract):
         model = cb.CatBoostClassifier()
         model.load_model(self.model_path)
         return model
+
+    def get_prediction(self, df_features):
+        x = self.get_features(df_features)
+        x = x.reindex(list(self.model.feature_names_), axis=1)
+        return list(list(self.model.predict_proba(x))[0])

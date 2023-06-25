@@ -1,7 +1,9 @@
 from kernel.model.catboost_model import CatboostModel
-from constant.model_categories import MIEM_MAG, FEN_MAG
+from constant.model_categories import MIEM_MAG, FEN_MAG, FKN_MAG
 from kernel.model.pickle_model import PickleModel
 from kernel.transformers.fen_mag_transformer import FenMagTransformer
+from kernel.transformers.miem_mag_transformer import MiemMagTransformer
+from kernel.transformers.fkn_mag_transformer import FknMagTransformer
 from db_api import DBOrm
 
 class ModelRunner:
@@ -9,8 +11,9 @@ class ModelRunner:
     def __init__(self, db_orm: DBOrm):
         self.db_orm = db_orm
         self.model_register = [
-            # CatboostModel('./models/model_miem_mag.cbm', MIEM_MAG)
-            PickleModel('./models/model_fen_mag.pkl', FEN_MAG, FenMagTransformer())
+            CatboostModel('./models/model_miem_mag.cbm', MIEM_MAG, MiemMagTransformer()),
+            CatboostModel('./models/model_fkn_mag.cbm', FKN_MAG, FknMagTransformer()),
+            PickleModel('./models/model_fen_mag.pkl', FEN_MAG, FenMagTransformer()),
         ]
 
     def get_prediction(self, student_id):

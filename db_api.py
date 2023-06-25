@@ -113,7 +113,8 @@ class DBOrm:
 
         for module, module_val in dict_for_data.items():
             for col, value in module_val.items():
-                dict_for_pf[col].append(value)
+                if col in dict_for_pf:
+                    dict_for_pf[col].append(value)
 
         return pd.DataFrame(dict_for_pf), prefix
 
