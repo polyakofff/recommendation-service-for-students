@@ -64,25 +64,14 @@ class DBOrm:
             self.degrees_info = {degree.degree_id: degree.degree_tag for degree in session.query(Degree).all()}
             self.faculcy_info = {faculcy.faculty_id: faculcy.faculty_tag for faculcy in session.query(Faculty).all()}
 
-    def add_subjects(self, prefix: str, subjects):
+    def get_all_exist_subject(self):
         with self.Session() as session:
-            existed_subject_key = {subject.subject_id for subject in session.query(Subject).all()}
+            return {subject.subject_id for subject in session.query(Subject).all()}
 
-        subjects_for_insert = [Subject(
-            subject_id=f'{prefix}_{row["ID"]}',
-            subject_name=row['Subject']
-        ) for i, row in subjects.iterrows() if f'{prefix}_{row["ID"]}' not in existed_subject_key]
-
-        existed_subject = [
-            row['ID']
-            for i, row in subjects.iterrows() if f'{prefix}_{row["ID"]}' in existed_subject_key
-        ]
-
+    def add_subjects(self, subjects):
         with self.Session() as session:
-            session.add_all(subjects_for_insert)
+            session.add_all(subjects)
             session.commit()
-
-        return (len(subjects_for_insert), list(existed_subject))
 
     def get_model_prefix_for_stident_id(self, student_id):
         with self.Session() as session:
