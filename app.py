@@ -1,20 +1,12 @@
 from flask import Flask, render_template, request
-import numpy as np
 import pandas as pd
-import pickle
 from db_api import DbApi
-
-
-class Model:
-    def fit(self, x):
-        pass
-
-    def predict(self, x):
-        pass
+from model_manager import ModelManager
 
 
 app = Flask(__name__)
 db_api = DbApi()
+model_manager = ModelManager()
 
 
 @app.route('/')
@@ -22,52 +14,48 @@ def hello_world():  # put application's code here
     return render_template("index.html")
 
 
-@app.route('/model', methods=['POST'])
-def upload_model():
-    """
-    Загрузить предиктивную модель для факультета
-    """
-
-    faculty = request.args.get('faculty')
-    if faculty is None:  # TODO: передавать аргумент
-        faculty = 'cs_b'
-    model_pkl = request.files.get('model').read()
-    # print(model_pkl)
-
-    db_api.save_model(faculty, model_pkl)
-
-    return render_template("index.html")
-
-
 @app.route('/data', methods=['POST'])
 def upload_data():
     """
-    Загрузить csv-таблицу
+    Загрузить csv-таблицу с оценками в формате:
+    ID,Факультет,Образовательная программа,Уровень обучения,Курс,Модуль,Предмет 1,Предмет 2,...
+    ...
+
+    Оценки для конкретного факультета на конкретной ступени образования (бакалавриат/магистратура)
     """
 
     faculty = request.args.get('faculty')
+    degree = request.args.get('degree')
     data_csv = request.files.get('data')
+
     df = pd.read_csv(data_csv)
 
-    courses_names = df.columns.values[2:]
-    names_2_ids = db_api.get_courses_ids_by_names(tuple(courses_names))
+    subjects = df.columns.drop(['ID', 'Факультет', 'Образовательная программа', 'Уровень обучения', 'Курс', 'Модуль']).values
+    subjects_present = db_api.get_all_subjects_by_fac_and_deg(faculty, degree)
+    subjects_dif = list(set(subjects) - set([s[1] for s in subjects_present]))
+    subjects_to_add = [(s, faculty, degree) for s in subjects_dif]
+    subjects_added = db_api.save_subjects_by_fac_and_deg(subjects_to_add)
+    print(f'subjects added: {subjects_added}')
+    subjects_name_to_id = {s[1]: s[0] for s in (subjects_present + subjects_added)}
 
+    student_ids = []
+    marks = []
     for i, row in df.iterrows():
-        student_id = int(row.get('id'))
-        module = int(row.get('module'))
-        for j in range(len(courses_names)):
-            course_name = courses_names[j]
-            value = row.get(course_name)
-            if not np.isnan(value):
-                # TODO: оптимизировать
-                db_api.save_mark(student_id, names_2_ids[course_name], module, value)
+        student_id = int(row.get('ID'))
+        student_ids.append(student_id)
+        level = int(row.get('Курс'))
+        module = int(row.get('Модуль'))
+        module16 = (level - 1) * 4 + module
+        for subject in subjects:
+            subject_id = subjects_name_to_id[subject]
+            value = row[subject]
+            if not pd.isnull(value):
+                marks.append((student_id, subject_id, module16, value))
 
-    model_pkl = db_api.get_model(faculty)
-    model = pickle.loads(model_pkl)
-    # TODO: дообучить/переобучить модель
-
-    model_pkl = pickle.dumps(model, protocol=pickle.HIGHEST_PROTOCOL)
-    db_api.save_model(faculty, model_pkl)
+    print(f'student ids: {student_ids}')
+    db_api.save_students([(id, faculty, degree) for id in student_ids])
+    print(f'marks: {marks}')
+    db_api.save_marks(marks)
 
     return render_template("index.html")
 
@@ -80,14 +68,36 @@ def get_prediction():
 
     student_id = request.args.get('student_id')
     student = db_api.get_student(student_id)
-    model_pkl = bytes(db_api.get_model(student['faculty']))
-    # print(model_pkl)
-    # print(type(model_pkl))
-    # TODO: загружать модель
-    model = pickle.loads(model_pkl)
+    faculty = student[1]
+    degree = student[2]
 
-    # sql -> Dataframe -> model.predict()
-    db_api.get_student_marks(student_id)
+    # create dataframe
+    subjects = db_api.get_all_subjects_by_fac_and_deg(faculty, degree)
+    marks = db_api.get_student_marks(student_id) # subject,module,value
+
+    marks_by_module = {}
+    for m in marks:
+        module = m[1]
+        if module not in marks_by_module:
+            marks_by_module[module] = []
+        marks_by_module[module].append((m[0], m[2]))
+
+    rows = []
+    prev_module = 0
+    for module in sorted(marks_by_module.keys()):
+        while prev_module + 1 < module:
+            prev_module += 1
+            rows.append({'module': prev_module})
+        row = {m[0]: m[1] for m in marks_by_module[module]}
+        row['module'] = module
+        rows.append(row)
+        prev_module = module
+
+    df = pd.DataFrame(rows, columns=['module'] + [s[1] for s in subjects])
+    print(df)
+
+    model = model_manager.get_model(faculty, degree)
+    model.get_prediction(df)
 
     return render_template("index.html")
 

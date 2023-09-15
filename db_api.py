@@ -1,5 +1,5 @@
 import psycopg2
-
+from psycopg2 import sql
 
 class DbApi:
 
@@ -17,84 +17,59 @@ class DbApi:
         except:
             print(f'Connection to db ({host}) failed')
 
-    def save_model(self, faculty, model):
+        self.faculties = self.get_all_faculties()
+        self.degrees = self.get_all_degrees()
+
+    def get_all_faculties(self):
+        return self.get_all('faculty')
+
+    def get_all_degrees(self):
+        return self.get_all('degree')
+
+    def get_all(self, table_name):
         with self.connection.cursor() as cursor:
-            cursor.execute('''
-            insert into faculty_model(faculty, model) 
-            values (%s, %s)
-            ''', (faculty, model))
+            cursor.execute(
+                sql.SQL("select * from {t}")
+                    .format(t=sql.Identifier(table_name)))
+            return cursor.fetchall()
 
-    def get_model(self, faculty):
+    def get_all_subjects_by_fac_and_deg(self, faculty, degree):
         with self.connection.cursor() as cursor:
-            cursor.execute('''
-            select model
-            from faculty_model
-            where faculty = %s
-            ''', (faculty,))
+            cursor.execute("select * from subject where faculty = %s and degree = %s", [faculty, degree])
+            return cursor.fetchall()
 
-            r = cursor.fetchone()
-            if r is None:
-                raise Exception(f'Не найдено записей в бд (pk={faculty})')
-            return r[0]
-
-
-    def get_student(self, student_id):
+    def save_subjects_by_fac_and_deg(self, subjects):
         with self.connection.cursor() as cursor:
-            cursor.execute('''
-            select *
-            from student
-            where id = %s
-            ''', student_id)
+            values = ','.join(cursor.mogrify("(%s, %s, %s)", s).decode('utf-8') for s in subjects)
+            if len(values) == 0:
+                return []
+            cursor.execute("insert into subject (name, faculty, degree) values " + values + " returning *")
+            return cursor.fetchall()
 
-            r = cursor.fetchone()
-            if r is None:
-                raise Exception(f'Не найдено записей в бд (pk={student_id})')
-            return {'id': r[0], 'name': r[1], 'faculty': r[2]}
-
-    def get_courses_ids_by_names(self, names):
-        if len(names) == 0:
-            return {}
-        res = {}
+    def save_students(self, students):
         with self.connection.cursor() as cursor:
-            cursor.execute('''
-            select * 
-            from course 
-            where name in %s
-            ''', (names,))
+            values = ','.join(cursor.mogrify("(%s, %s, %s)", s).decode('utf-8') for s in students)
+            if len(values) == 0:
+                return []
+            cursor.execute("insert into student (id, faculty, degree) values " + values + " on conflict do nothing")
 
-            rs = cursor.fetchall()
-            for r in rs:
-                res[r[1]] = r[0]
-
-        return res
-
-    def save_mark(self, student_id, course_id, module, value):
+    def save_marks(self, marks):
         with self.connection.cursor() as cursor:
-            cursor.execute('''
-            insert into mark(student_id, course_id, module, value) 
-            values (%s, %s, %s, %s)
-            ''', (student_id, course_id, module, value))
+            values = ','.join(cursor.mogrify("(%s, %s, %s, %s)", m).decode('utf-8') for m in marks)
+            if len(values) == 0:
+                return []
+            cursor.execute("insert into mark (student_id, subject_id, module, value) values " + values +
+                           " on conflict (student_id, subject_id, module) do update set value = EXCLUDED.value")
 
-        return 1
-
-    def get_student_marks(self, student_id):
+    def get_student(self, id):
         with self.connection.cursor() as cursor:
-            cursor.execute('''
-            select m.value
-            from course c
-                left join (
-                    select m.*
-                    from mark m
-                        left join mark m2 on m.student_id = m2.student_id
-                                         and m.course_id = m2.course_id
-                                         and m.module < m2.module
-                    where m2 is null
-                ) m on c.id = m.course_id
-            where m is null or m.student_id = %s
-            order by c.id
-            ''', (student_id,))
+            cursor.execute("select * from student where id = %s", id)
+            return cursor.fetchone()
 
-            rs = cursor.fetchall()
-            print(type(rs))
-            print(rs)
-
+    def get_student_marks(self, id):
+        with self.connection.cursor() as cursor:
+            cursor.execute("select s.name, m.module, m.value "
+                           "from mark m "
+                           "    join subject s on m.subject_id = s.id "
+                           "where m.student_id = %s", [id])
+            return cursor.fetchall()
