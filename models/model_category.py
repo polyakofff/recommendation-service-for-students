@@ -1,5 +1,12 @@
-from enum import Enum
+FEN_MAG = 'fen_mag'
+MIEM_MAG = 'miem_mag'
+FKN_BAC = 'fkn_bac'
 
-class ModelCategory(Enum):
-    FEN_MAG = 1,
-    MIEM_MAG = 2
+PREFIX_MAP = {
+    FEN_MAG: 'ФЭН Магистратура',
+    MIEM_MAG: 'МИЭМ Магистратура',
+    FKN_BAC: 'ФКН Бакалавриат'
+}
+
+def create_prefix(faculty, degree):
+    return f'{faculty}_{degree}'

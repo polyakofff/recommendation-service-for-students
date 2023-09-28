@@ -7,22 +7,18 @@ create table if not exists degree (
 );
 
 create table if not exists student (
-    id int primary key,
-    faculty text not null references faculty (name),
-    degree text not null references degree (name)
+    id text primary key
 );
 
 create table if not exists subject (
-    id serial primary key,
-    name text not null,
-    faculty text not null references faculty (name),
-    degree text not null references degree (name)
+    id text primary key,
+    name text not null
 );
 
 create table if not exists mark (
     id serial primary key,
-    student_id int not null references student (id),
-    subject_id int not null references subject (id),
+    student_id text not null references student (id),
+    subject_id text not null references subject (id),
     module int not null,
     value int not null,
     unique (student_id, subject_id, module)
