@@ -65,14 +65,14 @@ def upload_data():
 @app.route('/prediction', methods=['GET'])
 def get_prediction():
     """
-    Получить предсказание по студенту
+    Получить вероятность отчисления студента
     """
 
     faculty = request.args.get('faculty')
     degree = request.args.get('degree')
     if faculty is None or degree is None:
         abort(400, 'faculty or/and degree not set')
-    id = int(request.args.get('id'))
+    id = request.args.get('id', type=int)
 
     student = db_api.get_student_by_fac_and_deg(id, faculty, degree)
     if student is None:
@@ -101,8 +101,8 @@ def recommend():
     degree = request.args.get('degree')
     if faculty is None or degree is None:
         abort(400, 'faculty or/and degree not set')
-    id = int(request.args.get('id'))
-    n = int(request.args.get('n'))
+    id = request.args.get('id', type=int)
+    n = request.args.get('n', default=5, type=int)
 
     student = db_api.get_student_by_fac_and_deg(id, faculty, degree)
     if student is None:
